@@ -21,21 +21,20 @@
 #include "../Result.hpp"
 #include "../always_false.hpp"
 
-namespace rfl {
-namespace cbor {
+namespace rfl ::cbor {
 
 /// Please refer to https://intel.github.io/tinycbor/current/index.html
 struct Reader {
   struct CBORInputArray {
-    CborValue* val_;
+    cbor_item_t* val_;
   };
 
   struct CBORInputObject {
-    CborValue* val_;
+    cbor_item_t* val_;
   };
 
   struct CBORInputVar {
-    CborValue* val_;
+    cbor_item_t* val_;
   };
 
   using InputArrayType = CBORInputArray;
@@ -49,94 +48,77 @@ struct Reader {
 
   rfl::Result<InputVarType> get_field(
       const std::string& _name, const InputObjectType& _obj) const noexcept {
-    CborValue val;
-    auto buffer = std::vector<char>();
-    auto err = cbor_value_enter_container(_obj.val_, &val);
-    if (err != CborNoError) {
-      return Error(cbor_error_string(err));
-    }
-    size_t length = 0;
-    err = cbor_value_get_map_length(_obj.val_, &length);
-    if (err != CborNoError) {
-      return Error(cbor_error_string(err));
-    }
-    for (size_t i = 0; i < length; ++i) {
-      if (!cbor_value_is_text_string(&val)) {
-        return Error("Expected the key to be a string value.");
+    const size_t length = cbor_map_size(_obj.val_);
+    auto it = cbor_map_handle(_obj.val_);
+    for (size_t i = 0; i < length; ++i, ++it) {
+      if (!cbor_isa_string(it->key)) {
+        return Error("Expected the key to be a string.");
       }
-      err = get_string(&val, &buffer);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
-      }
-      err = cbor_value_advance(&val);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
-      }
-      if (_name == buffer.data()) {
-        return to_input_var(&val);
-      }
-      err = cbor_value_advance(&val);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
+      const auto name = to_string_view(it->key);
+      if (_name == name) {
+        return InputVarType{it->value};
       }
     }
-    return Error("No field named '" + _name + "' was found.");
+    return Error("Field named '" + _name + "' not found.");
   }
 
   bool is_empty(const InputVarType& _var) const noexcept {
-    return cbor_value_is_null(_var.val_);
+    return cbor_is_null(_var.val_);
   }
 
   template <class T>
   rfl::Result<T> to_basic_type(const InputVarType& _var) const noexcept {
     if constexpr (std::is_same<std::remove_cvref_t<T>, std::string>()) {
-      if (!cbor_value_is_text_string(_var.val_)) {
+      if (!cbor_isa_string(_var.val_)) {
         return Error("Could not cast to string.");
       }
-      std::vector<char> buffer;
-      const auto err = get_string(_var.val_, &buffer);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
-      }
-      return std::string(buffer.data());
+      return std::string(to_string_view(_var.val_));
     } else if constexpr (std::is_same<std::remove_cvref_t<T>, bool>()) {
-      if (!cbor_value_is_boolean(_var.val_)) {
+      if (!cbor_is_bool(_var.val_)) {
         return rfl::Error("Could not cast to boolean.");
       }
-      bool result = false;
-      const auto err = cbor_value_get_boolean(_var.val_, &result);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
+      return cbor_get_bool(_var.val_);
+    } else if constexpr (std::is_floating_point<std::remove_cvref_t<T>>()) {
+      if (!cbor_is_float(_var.val_)) {
+        return rfl::Error("Could not cast to boolean.");
       }
-      return result;
-    } else if constexpr (std::is_floating_point<std::remove_cvref_t<T>>() ||
-                         std::is_integral<std::remove_cvref_t<T>>()) {
-      if (cbor_value_is_integer(_var.val_)) {
-        std::int64_t result = 0;
-        const auto err = cbor_value_get_int64(_var.val_, &result);
-        if (err != CborNoError) {
-          return Error(cbor_error_string(err));
-        }
-        return static_cast<T>(result);
-      } else if (cbor_value_is_float(_var.val_)) {
-        float result = 0.0;
-        const auto err = cbor_value_get_float(_var.val_, &result);
-        if (err != CborNoError) {
-          return Error(cbor_error_string(err));
-        }
-        return static_cast<T>(result);
-      } else if (cbor_value_is_double(_var.val_)) {
-        double result = 0.0;
-        const auto err = cbor_value_get_double(_var.val_, &result);
-        if (err != CborNoError) {
-          return Error(cbor_error_string(err));
-        }
-        return static_cast<T>(result);
+      return static_cast<T>(cbor_float_get_float(_var.val_));
+    } else if constexpr (std::is_unsigned<std::remove_cvref_t<T>>()) {
+      const auto width = cbor_int_get_width(_var.val_);
+      switch (width) {
+        case CBOR_INT_8:
+          return static_cast<T>(cbor_get_uint8(_var.val_));
+        case CBOR_INT_16:
+          return static_cast<T>(cbor_get_uint16(_var.val_));
+        case CBOR_INT_32:
+          return static_cast<T>(cbor_get_uint32(_var.val_));
+        case CBOR_INT_64:
+          return static_cast<T>(cbor_get_uint64(_var.val_));
+        default:
+          return rfl::Error("Unknown width.");
       }
-      return rfl::Error(
-          "Could not cast to numeric value. The type must be integral, float "
-          "or double.");
-
+    } else if constexpr (std::is_integral<std::remove_cvref_t<T>>()) {
+      // Refer to
+      // https://libcbor.readthedocs.io/en/latest/api/type_0_1_integers.html#type-1-negative-integers
+      // for an explanation.
+      const bool is_neg = cbor_isa_negint(_var.val_);
+      const auto width = cbor_int_get_width(_var.val_);
+      switch (width) {
+        case CBOR_INT_8:
+          return is_neg ? static_cast<T>(cbor_get_uint8(_var.val_)) * (-1) - 1
+                        : static_cast<T>(cbor_get_uint8(_var.val_));
+        case CBOR_INT_16:
+          return is_neg ? static_cast<T>(cbor_get_uint16(_var.val_)) * (-1) - 1
+                        : static_cast<T>(cbor_get_uint16(_var.val_));
+        case CBOR_INT_32:
+          return is_neg ? static_cast<T>(cbor_get_uint32(_var.val_)) * (-1) - 1
+                        : static_cast<T>(cbor_get_uint32(_var.val_));
+        case CBOR_INT_64:
+          return is_neg ? static_cast<T>(cbor_get_uint64(_var.val_)) * (-1) - 1
+                        : static_cast<T>(cbor_get_uint64(_var.val_));
+        default:
+          return rfl::Error("Unknown width.");
+      }
     } else {
       static_assert(rfl::always_false_v<T>, "Unsupported type.");
     }
@@ -144,7 +126,7 @@ struct Reader {
 
   rfl::Result<InputArrayType> to_array(
       const InputVarType& _var) const noexcept {
-    if (!cbor_value_is_array(_var.val_)) {
+    if (!cbor_isa_array(_var.val_)) {
       return Error("Could not cast to an array.");
     }
     return InputArrayType{_var.val_};
@@ -152,8 +134,8 @@ struct Reader {
 
   rfl::Result<InputObjectType> to_object(
       const InputVarType& _var) const noexcept {
-    if (!cbor_value_is_map(_var.val_)) {
-      return Error("Could not cast to an object.");
+    if (!cbor_isa_map(_var.val_)) {
+      return Error("Could not cast to a map.");
     }
     return InputObjectType{_var.val_};
   }
@@ -161,25 +143,12 @@ struct Reader {
   template <class ArrayReader>
   std::optional<Error> read_array(const ArrayReader& _array_reader,
                                   const InputArrayType& _arr) const noexcept {
-    CborValue val;
-    auto buffer = std::vector<char>();
-    auto err = cbor_value_enter_container(_arr.val_, &val);
-    if (err != CborNoError && err != CborErrorOutOfMemory) {
-      return Error(cbor_error_string(err));
-    }
-    size_t length = 0;
-    err = cbor_value_get_array_length(_arr.val_, &length);
-    if (err != CborNoError && err != CborErrorOutOfMemory) {
-      return Error(cbor_error_string(err));
-    }
-    for (size_t i = 0; i < length; ++i) {
-      const auto err2 = _array_reader.read(to_input_var(&val));
-      if (err2) {
-        return err2;
-      }
-      err = cbor_value_advance(&val);
-      if (err != CborNoError && err != CborErrorOutOfMemory) {
-        return Error(cbor_error_string(err));
+    const size_t length = cbor_array_size(_arr.val_);
+    auto it = cbor_array_handle(_arr.val_);
+    for (size_t i = 0; i < length; ++i, ++it) {
+      const auto err = _array_reader.read(InputVarType{*it});
+      if (err) {
+        return err;
       }
     }
     return std::nullopt;
@@ -188,34 +157,15 @@ struct Reader {
   template <class ObjectReader>
   std::optional<Error> read_object(const ObjectReader& _object_reader,
                                    const InputObjectType& _obj) const noexcept {
-    size_t length = 0;
-    auto err = cbor_value_get_map_length(_obj.val_, &length);
-    if (err != CborNoError) {
-      return Error(cbor_error_string(err));
-    }
-
-    CborValue val;
-    err = cbor_value_enter_container(_obj.val_, &val);
-    if (err != CborNoError) {
-      return Error(cbor_error_string(err));
-    }
-
-    auto buffer = std::vector<char>();
-
-    for (size_t i = 0; i < length; ++i) {
-      err = get_string(&val, &buffer);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
+    const size_t length = cbor_map_size(_obj.val_);
+    auto it = cbor_map_handle(_obj.val_);
+    for (size_t i = 0; i < length; ++i, ++it) {
+      if (!cbor_isa_string(it->key)) {
+        return Error("Expected the key to be a string.");
       }
-      err = cbor_value_advance(&val);
-      if (err != CborNoError) {
-        return Error(cbor_error_string(err));
-      }
-      const auto name = std::string_view(buffer.data(), buffer.size() - 1);
-      _object_reader.read(name, InputVarType{&val});
-      cbor_value_advance(&val);
+      const auto name = to_string_view(it->key);
+      _object_reader.read(name, InputVarType{it->value});
     }
-
     return std::nullopt;
   }
 
@@ -230,30 +180,13 @@ struct Reader {
   }
 
  private:
-  CborError get_string(const CborValue* _ptr,
-                       std::vector<char>* _buffer) const noexcept {
-    size_t length = 0;
-    auto err = cbor_value_get_string_length(_ptr, &length);
-    if (err != CborNoError && err != CborErrorOutOfMemory) {
-      return err;
-    }
-    _buffer->resize(length + 1);
-    (*_buffer)[length] = '\0';
-    return cbor_value_copy_text_string(_ptr, _buffer->data(), &length, NULL);
+  std::string_view to_string_view(const cbor_item_t* _item) const noexcept {
+    const auto length = cbor_string_length(_item);
+    return std::string_view(
+        reinterpret_cast<const char*>(cbor_string_handle(_item)), length);
   }
-
-  InputVarType to_input_var(CborValue* _ptr) const noexcept {
-    values_->emplace_back(rfl::Box<CborValue>::make(*_ptr));
-    auto* last_value = values_->back().get();
-    return InputVarType{last_value};
-  }
-
- private:
-  /// Contains the values inside the object.
-  rfl::Box<std::vector<rfl::Box<CborValue>>> values_;
 };
 
-}  // namespace cbor
-}  // namespace rfl
+}  // namespace rfl::cbor
 
 #endif  // JSON_PARSER_HPP_

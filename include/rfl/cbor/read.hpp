@@ -28,12 +28,11 @@ auto read(const InputVarType& _obj) {
 template <class T, class... Ps>
 Result<internal::wrap_in_rfl_array_t<T>> read(const char* _bytes,
                                               const size_t _size) {
-  CborParser parser;
-  CborValue value;
-  cbor_parser_init(reinterpret_cast<const uint8_t*>(_bytes), _size, 0, &parser,
-                   &value);
-  auto doc = InputVarType{&value};
-  auto result = read<T, Ps...>(doc);
+  cbor_load_result load_result;
+  cbor_item_t* item = cbor_load(_bytes, _size, &load_result);
+  // TODO: Error handling
+  auto result = read<T, Ps...>(InputVarType{item});
+  cbor_decref(&item);
   return result;
 }
 

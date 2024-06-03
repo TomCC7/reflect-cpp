@@ -15,34 +15,23 @@
 namespace rfl {
 namespace cbor {
 
-template <class... Ps>
-void write_into_buffer(const auto& _obj, CborEncoder* _encoder,
-                       std::vector<char>* _buffer) noexcept {
-  using T = std::remove_cvref_t<decltype(_obj)>;
-  using ParentType = parsing::Parent<Writer>;
-  cbor_encoder_init(_encoder, reinterpret_cast<uint8_t*>(_buffer->data()),
-                    _buffer->size(), 0);
-  const auto writer = Writer(_encoder);
-  Parser<T, Processors<Ps...>>::write(writer, _obj,
-                                      typename ParentType::Root{});
-}
-
 /// Returns CBOR bytes.
 template <class... Ps>
 std::vector<char> write(const auto& _obj) noexcept {
-  std::vector<char> buffer(4096);
-  CborEncoder encoder;
-  write_into_buffer<Ps...>(_obj, &encoder, &buffer);
-  const auto total_bytes_needed =
-      buffer.size() + cbor_encoder_get_extra_bytes_needed(&encoder);
-  if (total_bytes_needed != buffer.size()) {
-    buffer.resize(total_bytes_needed);
-    write_into_buffer<Ps...>(_obj, &encoder, &buffer);
-  }
-  const auto length = cbor_encoder_get_buffer_size(
-      &encoder, reinterpret_cast<uint8_t*>(buffer.data()));
-  buffer.resize(length);
-  return buffer;
+  using T = std::remove_cvref_t<decltype(_obj)>;
+  using ParentType = parsing::Parent<Writer>;
+  cbor_item_t* root;
+  const auto writer = Writer(&root);
+  Parser<T, Processors<Ps...>>::write(writer, _obj,
+                                      typename ParentType::Root{});
+  unsigned char* buffer;
+  size_t buffer_size;
+  cbor_serialize_alloc(root, &buffer, &buffer_size);
+  cbor_decref(&root);
+  auto vec = std::vector<char>(reinterpret_cast<char*>(buffer),
+                               reinterpret_cast<char*>(buffer) + buffer_size);
+  free(buffer);
+  return vec;
 }
 
 /// Writes a CBOR into an ostream.

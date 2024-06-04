@@ -29,7 +29,8 @@ template <class T, class... Ps>
 Result<internal::wrap_in_rfl_array_t<T>> read(const char* _bytes,
                                               const size_t _size) {
   cbor_load_result load_result;
-  cbor_item_t* item = cbor_load(_bytes, _size, &load_result);
+  cbor_item_t* item = cbor_load(reinterpret_cast<const unsigned char*>(_bytes),
+                                _size, &load_result);
   // TODO: Error handling
   auto result = read<T, Ps...>(InputVarType{item});
   cbor_decref(&item);

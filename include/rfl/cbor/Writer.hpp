@@ -1,8 +1,6 @@
 #ifndef RFL_CBOR_WRITER_HPP_
 #define RFL_CBOR_WRITER_HPP_
 
-#include <cbor.h>
-
 #include <exception>
 #include <map>
 #include <sstream>
@@ -43,7 +41,7 @@ class Writer {
   ~Writer() = default;
 
   OutputArrayType array_as_root(const size_t _size) const noexcept {
-    *root_ = new_array(_size);
+    *root_ = new_array(_size).val_;
     return OutputArrayType{*root_};
   }
 
@@ -66,7 +64,10 @@ class Writer {
   OutputArrayType add_array_to_array(const size_t _size,
                                      OutputArrayType* _parent) const noexcept {
     auto arr = new_array(_size);
-    cbor_array_push(_parent->val_, cbor_move(arr.val_));
+    bool success = cbor_array_push(_parent->val_, cbor_move(arr.val_));
+    if (!success) {
+      cbor_decref(&arr.val_);
+    }
     return arr;
   }
 
@@ -74,16 +75,24 @@ class Writer {
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
     auto arr = new_array(_size);
-    cbor_map_add(_parent->val_, cbor_pair{.key = cbor_move(cbor_build_string(
-                                              std::string(_name).c_str())),
-                                          .value = cbor_move(arr.val_)});
+    bool success = cbor_map_add(
+        _parent->val_,
+        cbor_pair{
+            .key = cbor_move(cbor_build_string(std::string(_name).c_str())),
+            .value = cbor_move(arr.val_)});
+    if (!success) {
+      cbor_decref(&arr.val_);
+    }
     return arr;
   }
 
   OutputObjectType add_object_to_array(
       const size_t _size, OutputArrayType* _parent) const noexcept {
     auto obj = new_object(_size);
-    cbor_array_push(_parent->val_, cbor_move(obj.val_));
+    bool success = cbor_array_push(_parent->val_, cbor_move(obj.val_));
+    if (!success) {
+      cbor_decref(&obj.val_);
+    }
     return obj;
   }
 
@@ -91,9 +100,14 @@ class Writer {
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
     auto obj = new_object(_size);
-    cbor_map_add(_parent->val_, cbor_pair{.key = cbor_move(cbor_build_string(
-                                              std::string(_name).c_str())),
-                                          .value = cbor_move(obj.val_)});
+    bool success = cbor_map_add(
+        _parent->val_,
+        cbor_pair{
+            .key = cbor_move(cbor_build_string(std::string(_name).c_str())),
+            .value = cbor_move(obj.val_)});
+    if (!success) {
+      cbor_decref(&obj.val_);
+    }
     return obj;
   }
 
@@ -101,7 +115,10 @@ class Writer {
   OutputVarType add_value_to_array(const T& _var,
                                    OutputArrayType* _parent) const noexcept {
     auto val = new_value(_var);
-    cbor_array_push(_parent->val_, cbor_move(val.val_));
+    bool success = cbor_array_push(_parent->val_, cbor_move(val.val_));
+    if (!success) {
+      cbor_decref(&val.val_);
+    }
     return val;
   }
 
@@ -110,24 +127,37 @@ class Writer {
                                     const T& _var,
                                     OutputObjectType* _parent) const noexcept {
     auto val = new_value(_var);
-    cbor_map_add(_parent->val_, cbor_pair{.key = cbor_move(cbor_build_string(
-                                              std::string(_name).c_str())),
-                                          .value = cbor_move(obj.val_)});
+    bool success = cbor_map_add(
+        _parent->val_,
+        cbor_pair{
+            .key = cbor_move(cbor_build_string(std::string(_name).c_str())),
+            .value = cbor_move(val.val_)});
+    if (!success) {
+      cbor_decref(&val.val_);
+    }
     return val;
   }
 
   OutputVarType add_null_to_array(OutputArrayType* _parent) const noexcept {
     auto val = new_null();
-    cbor_array_push(_parent->val_, cbor_move(val.val_));
+    bool success = cbor_array_push(_parent->val_, cbor_move(val.val_));
+    if (!success) {
+      cbor_decref(&val.val_);
+    }
     return val;
   }
 
   OutputVarType add_null_to_object(const std::string_view& _name,
                                    OutputObjectType* _parent) const noexcept {
     auto val = new_null();
-    cbor_map_add(_parent->val_, cbor_pair{.key = cbor_move(cbor_build_string(
-                                              std::string(_name).c_str())),
-                                          .value = cbor_move(obj.val_)});
+    bool success = cbor_map_add(
+        _parent->val_,
+        cbor_pair{
+            .key = cbor_move(cbor_build_string(std::string(_name).c_str())),
+            .value = cbor_move(val.val_)});
+    if (!success) {
+      cbor_decref(&val.val_);
+    }
     return val;
   }
 
@@ -153,15 +183,12 @@ class Writer {
     if constexpr (std::is_same<std::remove_cvref_t<T>, std::string>()) {
       return OutputVarType{cbor_build_string(_var.c_str())};
     } else if constexpr (std::is_same<std::remove_cvref_t<T>, bool>()) {
-      return OutputVarType{cbor_build_null(_var)};
+      return OutputVarType{cbor_build_bool(_var)};
     } else if constexpr (std::is_floating_point<std::remove_cvref_t<T>>()) {
       return OutputVarType{cbor_build_float8(_var)};
     } else if constexpr (std::is_unsigned<std::remove_cvref_t<T>>()) {
-      return OutputVarType{cbor_build_uint32(static_cast<uint32_t>(_var)};
+      return OutputVarType{cbor_build_uint32(static_cast<uint32_t>(_var))};
     } else if constexpr (std::is_integral<std::remove_cvref_t<T>>()) {
-      // Refer to
-      // https://libcbor.readthedocs.io/en/latest/api/type_0_1_integers.html#type-1-negative-integers
-      // for an explanation.
       auto val = OutputVarType{cbor_new_int32()};
       if (_var < 0) {
         cbor_mark_negint(val.val_);
@@ -169,6 +196,7 @@ class Writer {
       } else {
         cbor_set_uint32(val.val_, static_cast<uint32_t>(_var));
       }
+      return val;
     } else {
       static_assert(rfl::always_false_v<T>, "Unsupported type.");
     }

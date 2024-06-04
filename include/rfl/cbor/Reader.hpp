@@ -21,9 +21,8 @@
 #include "../Result.hpp"
 #include "../always_false.hpp"
 
-namespace rfl ::cbor {
+namespace rfl::cbor {
 
-/// Please refer to https://intel.github.io/tinycbor/current/index.html
 struct Reader {
   struct CBORInputArray {
     cbor_item_t* val_;
@@ -98,9 +97,6 @@ struct Reader {
           return rfl::Error("Unknown width.");
       }
     } else if constexpr (std::is_integral<std::remove_cvref_t<T>>()) {
-      // Refer to
-      // https://libcbor.readthedocs.io/en/latest/api/type_0_1_integers.html#type-1-negative-integers
-      // for an explanation.
       const bool is_neg = cbor_isa_negint(_var.val_);
       const auto width = cbor_int_get_width(_var.val_);
       switch (width) {

@@ -46,9 +46,9 @@ endif ()
 
 if (REFLECTCPP_CBOR OR REFLECTCPP_BUILD_BENCHMARKS)
     if (MSVC)
-        target_link_libraries(reflectcpp PRIVATE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/tinycbor${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        target_link_libraries(reflectcpp PRIVATE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/cbor${CMAKE_STATIC_LIBRARY_SUFFIX}")
     else ()
-        target_link_libraries(reflectcpp PRIVATE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/libtinycbor${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        target_link_libraries(reflectcpp PRIVATE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/libcbor${CMAKE_STATIC_LIBRARY_SUFFIX}")
     endif ()
 endif ()
 

@@ -1,10 +1,9 @@
 #ifndef RFL_YAML_WRITER_HPP_
 #define RFL_YAML_WRITER_HPP_
 
-#include <yaml-cpp/yaml.h>
-
 #include <exception>
 #include <map>
+#include <ryml.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -21,125 +20,102 @@ namespace yaml {
 
 class Writer {
  public:
-  struct YAMLArray {};
+  struct YAMLArray {
+    YAMLArray(const ryml::NodeRef& _node) : node_(_node) {}
+    ryml::NodeRef node_;
+  };
 
-  struct YAMLObject {};
+  struct YAMLObject {
+    YAMLObject(const ryml::NodeRef& _node) : node_(_node) {}
+    ryml::NodeRef node_;
+  };
 
-  struct YAMLVar {};
+  struct YAMLVar {
+    YAMLVar(const ryml::NodeRef& _node) : node_(_node) {}
+    ryml::NodeRef node_;
+  };
 
   using OutputArrayType = YAMLArray;
   using OutputObjectType = YAMLObject;
   using OutputVarType = YAMLVar;
 
-  Writer(const Ref<YAML::Emitter>& _out) : out_(_out) {}
+  Writer(const Ref<ryml::Tree>& _tree) : tree_(_tree) {}
 
   ~Writer() = default;
 
   OutputArrayType array_as_root(const size_t _size) const noexcept {
-    return new_array();
+    return OutputArrayType(tree_->rootref());
   }
 
   OutputObjectType object_as_root(const size_t _size) const noexcept {
-    return new_object();
+    return OutputObjectType(tree_->rootref());
   }
 
   OutputVarType null_as_root() const noexcept {
-    return insert_value(YAML::Null);
+    return OutputVarType(tree_->rootref());
   }
 
   template <class T>
   OutputVarType value_as_root(const T& _var) const noexcept {
-    return insert_value(_var);
+    return OutputVarType(tree_->rootref());
   }
 
   OutputArrayType add_array_to_array(const size_t _size,
                                      OutputArrayType* _parent) const noexcept {
-    return new_array();
+    _parent->node_.append_child() |= ryml::SEQ;
+    return OutputArrayType(_parent->node_.last_child());
   }
 
   OutputArrayType add_array_to_object(
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
-    return new_array(_name);
+    _parent->node_.append_child() << ryml::key(_name) |= ryml::SEQ;
+    return OutputArrayType(_parent->node_.last_child());
   }
 
   OutputObjectType add_object_to_array(
       const size_t _size, OutputArrayType* _parent) const noexcept {
-    return new_object();
+    _parent->node_.append_child() |= ryml::MAP;
+    return OutputObjectType(_parent->node_.last_child());
   }
 
   OutputObjectType add_object_to_object(
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
-    return new_object(_name);
+    _parent->node_.append_child() << ryml::key(_name) |= ryml::MAP;
+    return OutputObjectType(_parent->node_.last_child());
   }
 
   template <class T>
   OutputVarType add_value_to_array(const T& _var,
                                    OutputArrayType* _parent) const noexcept {
-    return insert_value(_var);
+    _parent->node_[_parent->node_.num_children()] << _var;
+    return OutputVarType(_parent->node_.last_child());
   }
 
   template <class T>
   OutputVarType add_value_to_object(const std::string_view& _name,
                                     const T& _var,
                                     OutputObjectType* _parent) const noexcept {
-    return insert_value(_name, _var);
+    _parent->node_[_name] << _var;
+    return OutputVarType(_parent->node_.last_child());
   }
 
   OutputVarType add_null_to_array(OutputArrayType* _parent) const noexcept {
-    return insert_value(YAML::Null);
+    // TODO
   }
 
   OutputVarType add_null_to_object(const std::string_view& _name,
                                    OutputObjectType* _parent) const noexcept {
-    return insert_value(_name, YAML::Null);
+    // TODO
   }
 
-  void end_array(OutputArrayType* _arr) const noexcept {
-    (*out_) << YAML::EndSeq;
-  }
+  void end_array(OutputArrayType* _arr) const noexcept {}
 
-  void end_object(OutputObjectType* _obj) const noexcept {
-    (*out_) << YAML::EndMap;
-  }
-
- private:
-  template <class T>
-  OutputVarType insert_value(const std::string_view& _name,
-                             const T& _var) const noexcept {
-    (*out_) << YAML::Key << _name.data() << YAML::Value << _var;
-    return OutputVarType{};
-  }
-
-  template <class T>
-  OutputVarType insert_value(const T& _var) const noexcept {
-    (*out_) << _var;
-    return OutputVarType{};
-  }
-
-  OutputArrayType new_array(const std::string_view& _name) const noexcept {
-    (*out_) << YAML::Key << _name.data() << YAML::Value << YAML::BeginSeq;
-    return OutputArrayType{};
-  }
-
-  OutputArrayType new_array() const noexcept {
-    (*out_) << YAML::BeginSeq;
-    return OutputArrayType{};
-  }
-
-  OutputObjectType new_object(const std::string_view& _name) const noexcept {
-    (*out_) << YAML::Key << _name.data() << YAML::Value << YAML::BeginMap;
-    return OutputObjectType{};
-  }
-
-  OutputObjectType new_object() const noexcept {
-    (*out_) << YAML::BeginMap;
-    return OutputObjectType{};
-  }
+  void end_object(OutputObjectType* _obj) const noexcept {}
 
  public:
-  const Ref<YAML::Emitter> out_;
+  Ref<ryml::Tree> tree_;
 };
 
 }  // namespace yaml

@@ -32,6 +32,10 @@
       "version>=": "2023-07-17"
     },
     {
+      "name": "ryml",
+      "version>=": "0.5.0"
+    },
+    {
       "name": "simdjson",
       "version>=": "3.9.3"
     },
@@ -42,10 +46,6 @@
     {
       "name": "tomlplusplus",
       "version>=": "3.4.0"
-    },
-    {
-      "name": "yaml-cpp",
-      "version>=": "0.8.0#1"
     },
     {
       "name": "yyjson"

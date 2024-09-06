@@ -127,8 +127,8 @@ if (REFLECTCPP_XML)
 endif ()
 
 if (REFLECTCPP_YAML)
-    find_package(yaml-cpp CONFIG REQUIRED)
-    target_link_libraries(reflectcpp INTERFACE yaml-cpp::yaml-cpp)
+    find_package(ryml CONFIG REQUIRED)
+    target_link_libraries(reflectcpp INTERFACE ryml::ryml)
 endif ()
 
 if (REFLECTCPP_BUILD_TESTS)

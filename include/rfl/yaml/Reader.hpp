@@ -5,7 +5,7 @@
 #include <exception>
 #include <map>
 #include <memory>
-#include <ryml.hpp>
+#include <ryml/ryml.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -55,11 +55,13 @@ struct Reader {
 
   rfl::Result<InputVarType> get_field_from_object(
       const std::string& _name, const InputObjectType& _obj) const noexcept {
-    auto var = InputVarType(_obj.node_.at(_name));
-    if (var.node_.is_seed()) {
-      return rfl::Error("Object contains no field named '" + _name + "'.");
-    }
-    return var;
+    auto var =
+        InputVarType(_obj.node_[c4::csubstr(_name.c_str(), _name.size())]);
+    //  TODO
+    //  if (var.node_.is_seed()) {
+    //   return rfl::Error("Object contains no field named '" + _name + "'.");
+    //  }
+    // return var;
   }
 
   bool is_empty(const InputVarType& _var) const noexcept {
@@ -100,7 +102,9 @@ struct Reader {
   std::optional<Error> read_object(const ObjectReader& _object_reader,
                                    const InputObjectType& _obj) const noexcept {
     for (const ryml::ConstNodeRef& node : _obj.node_.children()) {
-      _object_reader.read(std::string_view(node.key()), InputVarType(node));
+      // TODO
+      //_object_reader.read(std::string_view(node.key().str, node.key().size()),
+      //                    InputVarType(node));
     }
     return std::nullopt;
   }

@@ -1,9 +1,8 @@
 #ifndef RFL_YAML_READ_HPP_
 #define RFL_YAML_READ_HPP_
 
-#include <yaml-cpp/yaml.h>
-
 #include <istream>
+#include <ryml/ryml.hpp>
 #include <string>
 
 #include "../Processors.hpp"
@@ -30,7 +29,10 @@ auto read(const InputVarType& _var) {
 template <class T, class... Ps>
 Result<internal::wrap_in_rfl_array_t<T>> read(const std::string& _yaml_str) {
   try {
-    const auto var = InputVarType(YAML::Load(_yaml_str));
+    auto buf = std::vector<char>(_yaml_str.c_str(),
+                                 _yaml_str.c_str() + _yaml_str.size());
+    const auto tree = ryml::parse_in_place(c4::substr(buf.data(), buf.size()));
+    const auto var = InputVarType(tree.rootref());
     return read<T, Ps...>(var);
   } catch (std::exception& e) {
     return Error(e.what());

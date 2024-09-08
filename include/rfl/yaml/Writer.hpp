@@ -3,7 +3,7 @@
 
 #include <exception>
 #include <map>
-#include <ryml.hpp>
+#include <ryml/ryml.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -69,7 +69,9 @@ class Writer {
   OutputArrayType add_array_to_object(
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
-    _parent->node_.append_child() << ryml::key(_name) |= ryml::SEQ;
+    auto buf = std::vector<char>(_name.begin(), _name.end());
+    auto substr = c4::substr(buf.data(), buf.size());
+    _parent->node_.append_child() << ryml::key(substr) |= ryml::SEQ;
     return OutputArrayType(_parent->node_.last_child());
   }
 
@@ -82,7 +84,9 @@ class Writer {
   OutputObjectType add_object_to_object(
       const std::string_view& _name, const size_t _size,
       OutputObjectType* _parent) const noexcept {
-    _parent->node_.append_child() << ryml::key(_name) |= ryml::MAP;
+    auto buf = std::vector<char>(_name.begin(), _name.end());
+    auto substr = c4::substr(buf.data(), buf.size());
+    _parent->node_.append_child() << ryml::key(substr) |= ryml::MAP;
     return OutputObjectType(_parent->node_.last_child());
   }
 
@@ -97,7 +101,7 @@ class Writer {
   OutputVarType add_value_to_object(const std::string_view& _name,
                                     const T& _var,
                                     OutputObjectType* _parent) const noexcept {
-    _parent->node_[_name] << _var;
+    _parent->node_[c4::csubstr(_name.data(), _name.size())] << _var;
     return OutputVarType(_parent->node_.last_child());
   }
 
